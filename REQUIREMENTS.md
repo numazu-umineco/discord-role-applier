@@ -47,7 +47,7 @@ Discord上でチャンネル・スレッドの発言者全員に、選択した�
 
 - **言語**: TypeScript 5.x
 - **ライブラリ**: discord.js v14
-- **ランタイム**: Node.js 20
+- **ランタイム**: Node.js 24
 - **ロギング**: console (stdout/stderr)
 - **コンテナ**: Docker / docker-compose
 
