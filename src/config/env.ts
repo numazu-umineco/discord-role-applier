@@ -11,6 +11,7 @@ export interface EnvConfig {
   logLevel: string;
   nodeEnv: string;
   commandName: string;
+  auditLogChannelId?: string;
 }
 
 function parseEnv(): EnvConfig {
@@ -35,6 +36,7 @@ function parseEnv(): EnvConfig {
     logLevel: process.env.LOG_LEVEL || 'info',
     nodeEnv: process.env.NODE_ENV || 'development',
     commandName: process.env.COMMAND_NAME || '発言者にロールを適用する',
+    auditLogChannelId: process.env.AUDIT_LOG_CHANNEL_ID,
   };
 }
 
