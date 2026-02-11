@@ -5,7 +5,10 @@ import {
   ButtonStyle,
   GuildMember,
   StringSelectMenuInteraction,
+  EmbedBuilder,
+  TextChannel,
 } from 'discord.js';
+import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { ErrorHandler, BotError, ErrorType } from '../utils/errorHandler';
 import { MessageHistoryService } from '../services/messageHistoryService';
@@ -265,6 +268,37 @@ ${userList}
       await interaction.editReply({
         content: resultMessage,
       });
+
+      // 監査ログチャンネルへの投稿
+      if (env.auditLogChannelId) {
+        try {
+          const auditChannel = await interaction.client.channels.fetch(env.auditLogChannelId);
+          if (auditChannel?.isTextBased() && 'send' in auditChannel) {
+            let resultText = `✅ 成功 ${result.success}人 / ⏭️ スキップ ${result.skipped}人`;
+            if (result.failed > 0) {
+              resultText += ` / ❌ 失敗 ${result.failed}人`;
+            }
+
+            const embed = new EmbedBuilder()
+              .setTitle('ロール付与ログ')
+              .setFields(
+                { name: '実行者', value: `<@${member.user.id}>`, inline: true },
+                { name: '対象', value: channelName, inline: true },
+                { name: 'ロール', value: role.name, inline: true },
+                { name: '結果', value: resultText },
+              )
+              .setTimestamp()
+              .setColor(result.failed > 0 ? 0xED4245 : 0x57F287);
+
+            await (auditChannel as TextChannel).send({ embeds: [embed] });
+            logger.info(`Audit log sent to channel ${env.auditLogChannelId}`);
+          } else {
+            logger.warn(`Audit log channel ${env.auditLogChannelId} is not a text channel`);
+          }
+        } catch (auditError) {
+          logger.error('Failed to send audit log', auditError);
+        }
+      }
     } catch (error) {
       logger.error('Error handling role confirm', error);
       await ErrorHandler.handleInteractionError(interaction, error as Error);
