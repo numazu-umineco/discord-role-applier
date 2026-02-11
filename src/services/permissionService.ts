@@ -1,4 +1,5 @@
-import { GuildMember, PermissionFlagsBits, Role } from 'discord.js';
+import { PermissionsBitField } from 'discord.js';
+import type { APIRole } from 'discord.js';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -7,20 +8,29 @@ export class PermissionService {
    * ユーザーが必要なロールを持っているか確認
    * 環境変数REQUIRED_ROLE_IDsで指定されたロールを持っているかチェック
    */
-  static hasRequiredRole(member: GuildMember): boolean {
+  static hasRequiredRole(
+    memberRoles: string[],
+    memberId: string,
+    ownerId: string
+  ): boolean {
     // サーバーオーナーは常に許可
-    if (member.id === member.guild.ownerId) {
-      logger.debug(`${member.user.tag} is server owner, allowing access`);
+    if (memberId === ownerId) {
+      logger.debug(`${memberId} is server owner, allowing access`);
+      return true;
+    }
+
+    // 必須ロールが未設定の場合は全員許可
+    if (env.requiredRoleIds.length === 0) {
       return true;
     }
 
     // いずれかのロールを持っていればOK
-    const hasRole = env.requiredRoleIds.some((roleId) => member.roles.cache.has(roleId));
+    const hasRole = env.requiredRoleIds.some((roleId) => memberRoles.includes(roleId));
 
     if (hasRole) {
-      logger.debug(`${member.user.tag} has required role, allowing access`);
+      logger.debug(`${memberId} has required role, allowing access`);
     } else {
-      logger.info(`${member.user.tag} does not have required role, denying access`);
+      logger.info(`${memberId} does not have required role, denying access`);
     }
 
     return hasRole;
@@ -30,31 +40,42 @@ export class PermissionService {
    * ユーザーが指定ロールを付与する権限を持っているか
    * Discordのロール階層を考慮
    */
-  static canManageRole(member: GuildMember, targetRole: Role): boolean {
+  static canManageRole(
+    memberRoles: string[],
+    memberId: string,
+    ownerId: string,
+    guildId: string,
+    guildRoles: APIRole[],
+    targetRoleId: string
+  ): boolean {
     // サーバーオーナーは常に許可
-    if (member.id === member.guild.ownerId) {
-      logger.debug(`${member.user.tag} is server owner, can manage role ${targetRole.name}`);
+    if (memberId === ownerId) {
+      logger.debug(`${memberId} is server owner, can manage role ${targetRoleId}`);
       return true;
     }
 
+    // メンバーの実効パーミッションを計算
+    const permissions = this.computePermissions(memberRoles, guildId, guildRoles);
+
     // MANAGE_ROLES権限を持っているか
-    if (!member.permissions.has(PermissionFlagsBits.ManageRoles)) {
-      logger.info(
-        `${member.user.tag} does not have MANAGE_ROLES permission for role ${targetRole.name}`
-      );
+    if (!permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      logger.info(`${memberId} does not have MANAGE_ROLES permission`);
       return false;
     }
 
     // 自分の最上位ロールより下位のロールのみ管理可能
-    const highestRole = member.roles.highest;
-    const canManage = highestRole.position > targetRole.position;
+    const memberHighestPosition = this.getHighestRolePosition(memberRoles, guildRoles);
+    const targetRole = guildRoles.find((r) => r.id === targetRoleId);
+    const targetPosition = targetRole?.position ?? 0;
+
+    const canManage = memberHighestPosition > targetPosition;
 
     if (!canManage) {
       logger.info(
-        `${member.user.tag} cannot manage role ${targetRole.name} (user highest: ${highestRole.position}, target: ${targetRole.position})`
+        `${memberId} cannot manage role ${targetRoleId} (user highest: ${memberHighestPosition}, target: ${targetPosition})`
       );
     } else {
-      logger.debug(`${member.user.tag} can manage role ${targetRole.name}`);
+      logger.debug(`${memberId} can manage role ${targetRoleId}`);
     }
 
     return canManage;
@@ -63,17 +84,58 @@ export class PermissionService {
   /**
    * ボットが指定ロールを付与できるか確認
    */
-  static canBotManageRole(botMember: GuildMember, targetRole: Role): boolean {
-    // Botの最上位ロールより下位のロールのみ管理可能
-    const botHighestRole = botMember.roles.highest;
-    const canManage = botHighestRole.position > targetRole.position;
+  static canBotManageRole(
+    botRoles: string[],
+    guildRoles: APIRole[],
+    targetRoleId: string
+  ): boolean {
+    const botHighestPosition = this.getHighestRolePosition(botRoles, guildRoles);
+    const targetRole = guildRoles.find((r) => r.id === targetRoleId);
+    const targetPosition = targetRole?.position ?? 0;
+
+    const canManage = botHighestPosition > targetPosition;
 
     if (!canManage) {
       logger.warn(
-        `Bot cannot manage role ${targetRole.name} (bot highest: ${botHighestRole.position}, target: ${targetRole.position})`
+        `Bot cannot manage role ${targetRoleId} (bot highest: ${botHighestPosition}, target: ${targetPosition})`
       );
     }
 
     return canManage;
+  }
+
+  /**
+   * メンバーのロールリストからパーミッションを計算
+   */
+  private static computePermissions(
+    memberRoleIds: string[],
+    guildId: string,
+    guildRoles: APIRole[]
+  ): PermissionsBitField {
+    let permissions = BigInt(0);
+
+    for (const role of guildRoles) {
+      // @everyoneロール（guildIdと同じID）は全員に適用
+      if (role.id === guildId || memberRoleIds.includes(role.id)) {
+        permissions |= BigInt(role.permissions);
+      }
+    }
+
+    // ADMINISTRATORを持つ場合は全権限
+    if (permissions & BigInt(PermissionsBitField.Flags.Administrator)) {
+      return new PermissionsBitField(PermissionsBitField.All);
+    }
+
+    return new PermissionsBitField(permissions);
+  }
+
+  /**
+   * ロールリストから最上位ロールのpositionを取得
+   */
+  private static getHighestRolePosition(roleIds: string[], guildRoles: APIRole[]): number {
+    return Math.max(
+      0,
+      ...guildRoles.filter((r) => roleIds.includes(r.id)).map((r) => r.position)
+    );
   }
 }

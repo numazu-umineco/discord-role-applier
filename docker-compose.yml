@@ -9,6 +9,8 @@ services:
       - .env
     environment:
       - NODE_ENV=production
+    ports:
+      - "${PORT:-8080}:8080"
     networks:
       - bot-network
 

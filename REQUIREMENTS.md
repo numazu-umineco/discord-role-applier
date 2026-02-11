@@ -46,7 +46,9 @@ Discord上でチャンネル・スレッドの発言者全員に、選択した�
 ## 技術スタック
 
 - **言語**: TypeScript 5.x
-- **ライブラリ**: discord.js v14
+- **Discord SDK**: discord.js v14（REST APIクライアント・型定義・UIビルダー）
+- **HTTPフレームワーク**: Hono + @hono/node-server
+- **署名検証**: discord-interactions
 - **ランタイム**: Node.js 24
 - **ロギング**: console (stdout/stderr)
 - **コンテナ**: Docker / docker-compose
@@ -61,8 +63,9 @@ Discord上でチャンネル・スレッドの発言者全員に、選択した�
 
 ### 運用制約
 - Botのロールは付与対象ロールより上位に配置必須
-- Privileged Intents（SERVER MEMBERS, MESSAGE CONTENT）の有効化必須
 - `MANAGE_ROLES`権限をBotに付与必須
+- Discord Developer PortalでInteractions Endpoint URLを設定必須（公開HTTPS URL）
+- Privileged Gateway Intentsは不要（REST APIでメッセージ・メンバーを取得するため）
 
 ## 将来的な拡張案
 

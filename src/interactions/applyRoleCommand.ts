@@ -1,109 +1,147 @@
-import { GuildMember, MessageContextMenuCommandInteraction } from 'discord.js';
+import type { APIChannel, APIMessageApplicationCommandInteraction } from 'discord.js';
+import { ChannelType } from 'discord.js';
 import { logger } from '../utils/logger';
-import { ErrorHandler, BotError, ErrorType } from '../utils/errorHandler';
+import { ErrorHandler } from '../utils/errorHandler';
 import { PermissionService } from '../services/permissionService';
 import { MessageHistoryService } from '../services/messageHistoryService';
 import { RoleService } from '../services/roleService';
 import { RoleSelectMenu } from '../interactions/roleSelectMenu';
+import { deferredResponse } from '../lib/interactionResponse';
+import { editOriginalInteractionResponse, fetchChannel } from '../lib/discordClient';
+import { env } from '../config/env';
 
-export async function handleApplyRoleCommand(
-  interaction: MessageContextMenuCommandInteraction
+/**
+ * コマンド実行時のHTTPレスポンスを返し、バックグラウンドで処理を実行
+ */
+export function handleApplyRoleCommand(
+  interaction: APIMessageApplicationCommandInteraction
+) {
+  const applicationId = env.clientId;
+  const interactionToken = interaction.token;
+  const guildId = interaction.guild_id;
+
+  // バックグラウンドで処理を実行
+  processApplyRoleCommand(interaction, applicationId, interactionToken, guildId!).catch(
+    (error) => {
+      ErrorHandler.handleDeferredError(applicationId, interactionToken, error as Error).catch(
+        (e) => logger.error('Failed to handle deferred error', e)
+      );
+    }
+  );
+
+  // 即座にdeferred responseを返す
+  return deferredResponse(true);
+}
+
+async function processApplyRoleCommand(
+  interaction: APIMessageApplicationCommandInteraction,
+  applicationId: string,
+  interactionToken: string,
+  guildId: string
 ): Promise<void> {
-  try {
-    logger.info(`Command executed by ${interaction.user.tag} in channel ${interaction.channelId}`);
-
-    // Phase 3: 権限チェック
-    const member = interaction.member as GuildMember;
-    if (!member || !interaction.guild) {
-      await interaction.reply({
-        content: '❌ このコマンドはサーバー内でのみ使用できます。',
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // 必須ロールを持っているかチェック
-    if (!PermissionService.hasRequiredRole(member)) {
-      await interaction.reply({
-        content: '❌ このコマンドを実行する権限がありません。',
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const targetMessage = interaction.targetMessage;
-    const channel = targetMessage.channel;
-
-    // チャンネル名を取得（スレッドの場合はスレッド名）
-    let channelName: string;
-    if (channel.isThread()) {
-      channelName = `スレッド: ${channel.name}`;
-    } else if ('name' in channel) {
-      channelName = `チャンネル: ${channel.name}`;
-    } else {
-      channelName = `チャンネル: ${channel.id}`;
-    }
-
-    // Phase 4: メッセージ履歴取得とユーザー抽出
-    await interaction.reply({
-      content: '⏳ メッセージ履歴を取得中...',
-      ephemeral: true,
+  const member = interaction.member;
+  if (!member || !guildId) {
+    await editOriginalInteractionResponse(applicationId, interactionToken, {
+      content: '❌ このコマンドはサーバー内でのみ使用できます。',
     });
+    return;
+  }
 
-    const messages = await MessageHistoryService.fetchChannelMessages(channel);
-    const userIds = MessageHistoryService.extractUniqueUsers(messages);
+  logger.info(
+    `Command executed by ${member.user?.id} in channel ${interaction.channel?.id}`
+  );
 
-    if (userIds.size === 0) {
-      await interaction.editReply({
-        content: '❌ このチャンネルには発言者がいません。',
-      });
-      return;
-    }
+  // 権限チェック
+  if (!PermissionService.hasRequiredRole(member.roles, member.user?.id ?? '', interaction.data?.guild_id ?? guildId)) {
+    await editOriginalInteractionResponse(applicationId, interactionToken, {
+      content: '❌ このコマンドを実行する権限がありません。',
+    });
+    return;
+  }
 
-    const members = await MessageHistoryService.filterValidMembers(userIds, interaction.guild);
+  // ターゲットメッセージのチャンネルIDを取得
+  const targetMessage = interaction.data.resolved.messages[interaction.data.target_id];
+  const channelId = targetMessage.channel_id;
 
-    if (members.length === 0) {
-      await interaction.editReply({
-        content: '❌ このチャンネルの発言者は全員サーバーから退出しています。',
-      });
-      return;
-    }
+  // チャンネル情報を取得
+  let channel: APIChannel;
+  try {
+    channel = await fetchChannel(channelId);
+  } catch {
+    await editOriginalInteractionResponse(applicationId, interactionToken, {
+      content: '❌ チャンネル情報の取得に失敗しました。',
+    });
+    return;
+  }
 
-    // Phase 5: ロール選択UIを表示
-    const botMember = await interaction.guild.members.fetchMe();
-    const roles = RoleService.getAssignableRoles(interaction.guild, botMember);
+  // チャンネル名を取得
+  let channelName: string;
+  if (
+    channel.type === ChannelType.PublicThread ||
+    channel.type === ChannelType.PrivateThread ||
+    channel.type === ChannelType.AnnouncementThread
+  ) {
+    channelName = `スレッド: ${'name' in channel ? channel.name : channelId}`;
+  } else if ('name' in channel && channel.name) {
+    channelName = `チャンネル: ${channel.name}`;
+  } else {
+    channelName = `チャンネル: ${channelId}`;
+  }
 
-    if (roles.length === 0) {
-      await interaction.editReply({
-        content: '❌ 付与可能なロールがありません。',
-      });
-      return;
-    }
+  // メッセージ履歴取得とユーザー抽出
+  const messages = await MessageHistoryService.fetchMessages(channelId);
+  const userIds = MessageHistoryService.extractUniqueUsers(messages);
 
-    const selectMenuRow = RoleSelectMenu.createRoleSelectMenu(channel.id, roles);
+  if (userIds.size === 0) {
+    await editOriginalInteractionResponse(applicationId, interactionToken, {
+      content: '❌ このチャンネルには発言者がいません。',
+    });
+    return;
+  }
 
-    let resultMessage = `
+  const members = await MessageHistoryService.filterValidMembers(userIds, guildId);
+
+  if (members.length === 0) {
+    await editOriginalInteractionResponse(applicationId, interactionToken, {
+      content: '❌ このチャンネルの発言者は全員サーバーから退出しています。',
+    });
+    return;
+  }
+
+  // ロール選択UIを表示
+  const roles = await RoleService.getAssignableRoles(guildId);
+
+  if (roles.length === 0) {
+    await editOriginalInteractionResponse(applicationId, interactionToken, {
+      content: '❌ 付与可能なロールがありません。',
+    });
+    return;
+  }
+
+  const selectMenuRow = RoleSelectMenu.createRoleSelectMenu(channelId, roles);
+
+  let resultMessage = `
 ✅ メッセージ履歴の取得完了！
 
 ${channelName}
 取得メッセージ数: ${messages.length}件
 ユニーク発言者: ${userIds.size}人
 現在サーバーにいる発言者: ${members.length}人
-    `.trim();
+  `.trim();
 
-    // チャンネルの場合は注意喚起
-    if (!channel.isThread()) {
-      resultMessage += '\n\n⚠️ **チャンネル全体が対象です**';
-    }
-
-    resultMessage += '\n\n下のメニューから付与するロールを選択してください👇';
-
-    await interaction.editReply({
-      content: resultMessage,
-      components: [selectMenuRow],
-    });
-  } catch (error) {
-    logger.error('Error handling apply role command', error);
-    await ErrorHandler.handleInteractionError(interaction, error as Error);
+  // チャンネルの場合は注意喚起
+  const isThread =
+    channel.type === ChannelType.PublicThread ||
+    channel.type === ChannelType.PrivateThread ||
+    channel.type === ChannelType.AnnouncementThread;
+  if (!isThread) {
+    resultMessage += '\n\n⚠️ **チャンネル全体が対象です**';
   }
+
+  resultMessage += '\n\n下のメニューから付与するロールを選択してください👇';
+
+  await editOriginalInteractionResponse(applicationId, interactionToken, {
+    content: resultMessage,
+    components: [selectMenuRow],
+  });
 }

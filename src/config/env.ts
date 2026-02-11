@@ -5,6 +5,8 @@ dotenv.config();
 export interface EnvConfig {
   discordToken: string;
   clientId: string;
+  publicKey: string;
+  port: number;
   guildId?: string;
   requiredRoleIds: string[];
   maxMessageFetch: number;
@@ -14,7 +16,7 @@ export interface EnvConfig {
 }
 
 function parseEnv(): EnvConfig {
-  const requiredVars = ['DISCORD_TOKEN', 'CLIENT_ID'];
+  const requiredVars = ['DISCORD_TOKEN', 'CLIENT_ID', 'DISCORD_PUBLIC_KEY'];
   const missing = requiredVars.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
@@ -29,6 +31,8 @@ function parseEnv(): EnvConfig {
   return {
     discordToken: process.env.DISCORD_TOKEN!,
     clientId: process.env.CLIENT_ID!,
+    publicKey: process.env.DISCORD_PUBLIC_KEY!,
+    port: parseInt(process.env.PORT || '8080', 10),
     guildId: process.env.GUILD_ID,
     requiredRoleIds,
     maxMessageFetch: parseInt(process.env.MAX_MESSAGE_FETCH || '1000', 10),
