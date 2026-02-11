@@ -36,6 +36,24 @@ export class InteractionHandler {
         `Role selection by ${member.user.tag}: role ${selectedRoleId} for channel ${channelId}`
       );
 
+      // チャンネルを取得してスレッドかどうか判定
+      const channel = await interaction.guild.channels.fetch(channelId);
+      if (!channel) {
+        throw new BotError(
+          ErrorType.INVALID_CHANNEL,
+          `Channel ${channelId} not found`,
+          'チャンネルが見つかりません。'
+        );
+      }
+      let channelName: string;
+      if (channel.isThread()) {
+        channelName = `スレッド: ${channel.name}`;
+      } else if ('name' in channel) {
+        channelName = `チャンネル: ${channel.name}`;
+      } else {
+        channelName = `チャンネル: ${channelId}`;
+      }
+
       // 選択されたロールを取得
       const role = await interaction.guild.roles.fetch(selectedRoleId);
       if (!role) {
@@ -44,6 +62,45 @@ export class InteractionHandler {
           `Role ${selectedRoleId} not found`,
           'ロールが見つかりません。'
         );
+      }
+
+      // 対象者を取得
+      const messages = await MessageHistoryService.fetchChannelMessages(channel);
+      const userIds = MessageHistoryService.extractUniqueUsers(messages);
+      const targetMembers = await MessageHistoryService.filterValidMembers(userIds, interaction.guild);
+
+      // 対象者が0人の場合
+      if (targetMembers.length === 0) {
+        await interaction.update({
+          content: '❌ 対象者がいません。このチャンネル/スレッドの発言者は全員サーバーから退出しています。',
+          components: [],
+        });
+        return;
+      }
+
+      // メンションリストを作成（最大30人、文字数制限も考慮）
+      const maxDisplayUsers = 30;
+      let displayMembers = targetMembers.slice(0, maxDisplayUsers);
+      let remainingCount = targetMembers.length - displayMembers.length;
+
+      let userList = displayMembers.map(m => `<@${m.user.id}>`).join(', ');
+      if (remainingCount > 0) {
+        userList += `, 他${remainingCount}人`;
+      }
+
+      // 文字数制限チェック（2000文字制限）
+      const baseMessageLength = 200; // 固定テキストの概算
+      const maxUserListLength = 1800;
+      if (userList.length > maxUserListLength) {
+        // 文字数オーバーの場合は表示人数を減らす
+        while (displayMembers.length > 1 && userList.length > maxUserListLength) {
+          displayMembers = displayMembers.slice(0, -1);
+          remainingCount = targetMembers.length - displayMembers.length;
+          userList = displayMembers.map(m => `<@${m.user.id}>`).join(', ');
+          if (remainingCount > 0) {
+            userList += `, 他${remainingCount}人`;
+          }
+        }
       }
 
       // 権限チェック: ユーザーがこのロールを管理できるか
@@ -85,8 +142,25 @@ export class InteractionHandler {
       );
 
       // 確認メッセージに更新
+      let confirmMessage = `
+**確認**
+
+${channelName}
+ロール: **${role.name}**
+対象者: **${targetMembers.length}人**
+
+${userList}
+
+上記の発言者全員にロールを付与しますか？
+      `.trim();
+
+      // チャンネルの場合は注意喚起
+      if (!channel.isThread()) {
+        confirmMessage += '\n\n⚠️ **チャンネル全体が対象です。影響範囲が大きくなる可能性があります。**';
+      }
+
       await interaction.update({
-        content: `**確認**\n\nチャンネル <#${channelId}> の発言者全員に\nロール **${role.name}** を付与しますか？`,
+        content: confirmMessage,
         components: [row],
       });
     } catch (error) {
@@ -131,6 +205,14 @@ export class InteractionHandler {
           'チャンネルが見つかりません。'
         );
       }
+      let channelName: string;
+      if (channel.isThread()) {
+        channelName = `スレッド: ${channel.name}`;
+      } else if ('name' in channel) {
+        channelName = `チャンネル: ${channel.name}`;
+      } else {
+        channelName = `チャンネル: ${channelId}`;
+      }
 
       // ロールを取得
       const role = await interaction.guild.roles.fetch(roleId);
@@ -166,22 +248,22 @@ export class InteractionHandler {
       const result = await RoleService.applyRoleToMembers(members, roleId);
 
       // 結果をフィードバック
-      const lines = [
-        '✅ ロール付与完了！',
-        '',
-        `**対象チャンネル:** <#${channelId}>`,
-        `**付与したロール:** ${role.name}`,
-        '',
-        `✅ 成功: ${result.success}人`,
-        `⏭️ スキップ: ${result.skipped}人（既に保持）`,
-      ];
+      let resultMessage = `
+✅ ロール付与完了！
+
+**${channelName}**
+**付与したロール:** ${role.name}
+
+✅ 成功: ${result.success}人
+⏭️ スキップ: ${result.skipped}人（既に保持）
+      `.trim();
 
       if (result.failed > 0) {
-        lines.push(`❌ 失敗: ${result.failed}人`);
+        resultMessage += `\n❌ 失敗: ${result.failed}人`;
       }
 
       await interaction.editReply({
-        content: lines.join('\n'),
+        content: resultMessage,
       });
     } catch (error) {
       logger.error('Error handling role confirm', error);

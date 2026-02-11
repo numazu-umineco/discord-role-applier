@@ -34,6 +34,16 @@ export async function handleApplyRoleCommand(
     const targetMessage = interaction.targetMessage;
     const channel = targetMessage.channel;
 
+    // チャンネル名を取得（スレッドの場合はスレッド名）
+    let channelName: string;
+    if (channel.isThread()) {
+      channelName = `スレッド: ${channel.name}`;
+    } else if ('name' in channel) {
+      channelName = `チャンネル: ${channel.name}`;
+    } else {
+      channelName = `チャンネル: ${channel.id}`;
+    }
+
     // Phase 4: メッセージ履歴取得とユーザー抽出
     await interaction.reply({
       content: '⏳ メッセージ履歴を取得中...',
@@ -72,8 +82,24 @@ export async function handleApplyRoleCommand(
 
     const selectMenuRow = RoleSelectMenu.createRoleSelectMenu(channel.id, roles);
 
+    let resultMessage = `
+✅ メッセージ履歴の取得完了！
+
+${channelName}
+取得メッセージ数: ${messages.length}件
+ユニーク発言者: ${userIds.size}人
+現在サーバーにいる発言者: ${members.length}人
+    `.trim();
+
+    // チャンネルの場合は注意喚起
+    if (!channel.isThread()) {
+      resultMessage += '\n\n⚠️ **チャンネル全体が対象です**';
+    }
+
+    resultMessage += '\n\n下のメニューから付与するロールを選択してください👇';
+
     await interaction.editReply({
-      content: `✅ メッセージ履歴の取得完了！\n\nチャンネル: <#${channel.id}>\n取得メッセージ数: ${messages.length}件\nユニーク発言者: ${userIds.size}人\n現在サーバーにいる発言者: ${members.length}人\n\n下のメニューから付与するロールを選択してください👇`,
+      content: resultMessage,
       components: [selectMenuRow],
     });
   } catch (error) {

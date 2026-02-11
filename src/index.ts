@@ -1,9 +1,16 @@
-import { Events } from 'discord.js';
-import { client } from './bot';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { env } from './config/env';
 import { logger } from './utils/logger';
-import { handleApplyRoleCommand } from './commands/applyRole';
+import { handleApplyRoleCommand } from './interactions/applyRoleCommand';
 import { InteractionHandler } from './interactions/interactionHandler';
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+  ],
+});
 
 client.once(Events.ClientReady, (c) => {
   logger.info(`✅ Bot is ready! Logged in as ${c.user.tag}`);
