@@ -168,6 +168,7 @@ npm run lint
 - **言語**: TypeScript
 - **ライブラリ**: discord.js v14
 - **ロギング**: stdout/stderr (Dockerログ管理推奨)
+- **ランタイム**: Node.js 24
 - **インフラ**: Docker / docker-compose
 
 ## ライセンス

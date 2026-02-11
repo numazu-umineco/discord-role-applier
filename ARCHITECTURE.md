@@ -134,7 +134,7 @@ User: 「実行」ボタンクリック
 | レイヤー | 技術 | 用途 |
 |---------|------|------|
 | 言語 | TypeScript 5.x | 型安全性 |
-| ランタイム | Node.js 20 | 実行環境 |
+| ランタイム | Node.js 24 | 実行環境 |
 | Discord SDK | discord.js v14 | Discord API通信 |
 | ロギング | console | stdout/stderr出力 |
 | コンテナ | Docker | ポータブル実行 |
