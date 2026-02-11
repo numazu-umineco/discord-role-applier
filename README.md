@@ -157,7 +157,7 @@ npm run lint
 
 - **言語**: TypeScript
 - **ライブラリ**: discord.js v14
-- **ロギング**: Winston
+- **ロギング**: stdout/stderr (Dockerログ管理推奨)
 - **インフラ**: Docker / docker-compose
 
 ## ライセンス

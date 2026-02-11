@@ -34,7 +34,7 @@ function parseEnv(): EnvConfig {
     maxMessageFetch: parseInt(process.env.MAX_MESSAGE_FETCH || '1000', 10),
     logLevel: process.env.LOG_LEVEL || 'info',
     nodeEnv: process.env.NODE_ENV || 'development',
-    commandName: process.env.COMMAND_NAME || 'このチャンネルの発言者にロールを適用する',
+    commandName: process.env.COMMAND_NAME || '発言者にロールを適用する',
   };
 }
 

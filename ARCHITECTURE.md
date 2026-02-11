@@ -176,7 +176,7 @@ class PermissionService {
 1. サーバーオーナーは常に許可
 2. 環境変数で指定されたロールを持つか（空の場合は拒否）
 3. `MANAGE_ROLES`権限を持つか
-4. 自分の最上位ロールより下位のロールのみ管理可能
+4. 自分/Botの最上位ロールより下位のロールのみ管理可能
 
 #### messageHistoryService.ts
 
@@ -236,7 +236,7 @@ class RoleService {
 **フィルタリングロジック**:
 - `@everyone`ロールを除外
 - managed（Bot統合ロール）を除外
-- Botのロール階層チェックは行わない（ユーザーが意図的に上位ロールを選択可能）
+- Botのロール階層より上位のロールを除外（安全性のため）
 
 ---
 
@@ -244,7 +244,7 @@ class RoleService {
 
 #### logger.ts
 
-**責務**: 構造化ロギング
+**責務**: 構造化ロギング（stdout/stderr出力）
 
 **ログレベル**:
 - `debug`: 詳細なデバッグ情報
@@ -253,8 +253,9 @@ class RoleService {
 - `error`: エラー（スタックトレース含む）
 
 **出力先**:
-- 開発環境: コンソール
-- 本番環境: コンソール + ファイル（`logs/`）
+- すべてのログは標準出力（stdout/stderr）に出力
+- Docker環境で `docker logs` / `docker-compose logs` で確認可能
+- 外部ログ管理システム（CloudWatch, Datadog等）との統合が容易
 
 #### errorHandler.ts
 
@@ -435,7 +436,6 @@ FROM node:20-alpine
 services:
   bot:
     - 環境変数をファイルから読み込み
-    - ログの永続化
     - 自動再起動
 ```
 
@@ -469,7 +469,7 @@ services:
 | 言語 | TypeScript 5.x | 型安全性 |
 | ランタイム | Node.js 20 | 実行環境 |
 | Discord SDK | discord.js v14 | Discord API通信 |
-| ロギング | Winston | 構造化ロギング |
+| ロギング | console (stdout/stderr) | ログ出力 |
 | コンテナ | Docker | ポータブル実行 |
 | オーケストレーション | docker-compose | 簡易デプロイ |
 
@@ -480,12 +480,21 @@ services:
 ### 13.1 ログ管理
 
 **ログ出力先**:
-- 開発: コンソールのみ
-- 本番: コンソール + `logs/combined.log` + `logs/error.log`
+- すべての環境: 標準出力（stdout/stderr）
 
-**ログローテーション**:
-- Dockerボリュームマウントで永続化
-- 外部ツール（logrotate等）での管理を推奨
+**Docker環境でのログ確認**:
+```bash
+# リアルタイムでログを確認
+docker-compose logs -f bot
+
+# 直近100行を表示
+docker-compose logs --tail=100 bot
+```
+
+**ログ管理の推奨**:
+- Docker のログドライバー（json-file, syslog, journald等）を利用
+- 外部ログ管理サービス（CloudWatch Logs, Datadog, Splunk等）への転送
+- ログローテーションはDockerのログドライバー設定で管理
 
 ### 13.2 モニタリング
 

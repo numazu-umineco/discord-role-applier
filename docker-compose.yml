@@ -9,8 +9,6 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-    volumes:
-      - ./logs:/app/logs
     networks:
       - bot-network
 

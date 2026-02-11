@@ -5,7 +5,7 @@ import { RoleApplicationResult } from '../types';
 export class RoleService {
   /**
    * サーバーの付与可能なロール一覧を取得
-   * @everyoneとmanagedロールは除外
+   * @everyoneとmanagedロール、Botより上位のロールは除外
    */
   static getAssignableRoles(guild: Guild, botMember: GuildMember): Role[] {
     const botHighestRole = botMember.roles.highest;
@@ -17,6 +17,9 @@ export class RoleService {
 
         // managed（ボットのロールなど）を除外
         if (role.managed) return false;
+
+        // ボットより上位のロールは除外
+        if (role.position >= botHighestRole.position) return false;
 
         return true;
       })
