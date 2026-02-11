@@ -1,51 +1,69 @@
-import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { Hono } from 'hono';
+import { serve } from '@hono/node-server';
+import { verifyKey } from 'discord-interactions';
+import type { APIInteraction } from 'discord.js';
+import { InteractionType } from 'discord.js';
 import { env } from './config/env';
 import { logger } from './utils/logger';
 import { handleApplyRoleCommand } from './interactions/applyRoleCommand';
 import { InteractionHandler } from './interactions/interactionHandler';
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-  ],
-});
+const app = new Hono();
 
-client.once(Events.ClientReady, (c) => {
-  logger.info(`✅ Bot is ready! Logged in as ${c.user.tag}`);
-});
+// ヘルスチェック
+app.get('/health', (c) => c.json({ status: 'ok' }));
 
-client.on(Events.InteractionCreate, async (interaction) => {
-  // Message Context Menu Command
-  if (interaction.isMessageContextMenuCommand()) {
-    if (interaction.commandName === env.commandName) {
-      await handleApplyRoleCommand(interaction);
-    }
-    return;
+// Discord Interactions Endpoint
+app.post('/interactions', async (c) => {
+  const signature = c.req.header('x-signature-ed25519');
+  const timestamp = c.req.header('x-signature-timestamp');
+  const body = await c.req.text();
+
+  if (!signature || !timestamp) {
+    return c.text('Missing signature headers', 401);
   }
 
-  // String Select Menu (ロール選択)
-  if (interaction.isStringSelectMenu()) {
-    if (interaction.customId.startsWith('role_select_')) {
-      await InteractionHandler.handleRoleSelection(interaction);
-    }
-    return;
+  const isValid = await verifyKey(body, signature, timestamp, env.publicKey);
+  if (!isValid) {
+    return c.text('Invalid signature', 401);
   }
 
-  // Button (確認・キャンセル)
-  if (interaction.isButton()) {
-    if (interaction.customId.startsWith('role_confirm_')) {
-      await InteractionHandler.handleRoleConfirm(interaction);
-    } else if (interaction.customId.startsWith('role_cancel_')) {
-      await InteractionHandler.handleRoleCancel(interaction);
-    }
-    return;
-  }
-});
+  const interaction: APIInteraction = JSON.parse(body);
 
-client.on(Events.Error, (error) => {
-  logger.error('Discord client error', error);
+  // PING (type 1)
+  if (interaction.type === InteractionType.Ping) {
+    return c.json({ type: 1 });
+  }
+
+  // Application Command (type 2)
+  if (interaction.type === InteractionType.ApplicationCommand) {
+    if (interaction.data.name === env.commandName) {
+      const response = handleApplyRoleCommand(interaction as any);
+      return c.json(response);
+    }
+  }
+
+  // Message Component (type 3)
+  if (interaction.type === InteractionType.MessageComponent) {
+    const customId = interaction.data.custom_id;
+
+    if (customId.startsWith('role_select_')) {
+      const response = InteractionHandler.handleRoleSelection(interaction);
+      return c.json(response);
+    }
+
+    if (customId.startsWith('role_confirm_')) {
+      const response = InteractionHandler.handleRoleConfirm(interaction);
+      return c.json(response);
+    }
+
+    if (customId.startsWith('role_cancel_')) {
+      const response = InteractionHandler.handleRoleCancel(interaction);
+      return c.json(response);
+    }
+  }
+
+  return c.text('Unknown interaction', 400);
 });
 
 process.on('unhandledRejection', (error) => {
@@ -57,14 +75,6 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-async function main() {
-  try {
-    logger.info('Starting Discord bot...');
-    await client.login(env.discordToken);
-  } catch (error) {
-    logger.error('Failed to start bot', error);
-    process.exit(1);
-  }
-}
-
-main();
+serve({ fetch: app.fetch, port: env.port }, () => {
+  logger.info(`HTTP server started on port ${env.port}`);
+});

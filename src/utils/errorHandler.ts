@@ -1,5 +1,6 @@
-import { Interaction } from 'discord.js';
 import { logger } from './logger';
+import { immediateResponse } from '../lib/interactionResponse';
+import { editOriginalInteractionResponse } from '../lib/discordClient';
 
 export enum ErrorType {
   PERMISSION_DENIED = 'PERMISSION_DENIED',
@@ -24,28 +25,33 @@ export class BotError extends Error {
 }
 
 export class ErrorHandler {
-  static async handleInteractionError(
-    interaction: Interaction,
+  /**
+   * HTTPレスポンスとしてエラーを即座に返す
+   */
+  static immediateErrorResponse(error: Error) {
+    const userMessage = this.getUserFriendlyMessage(error);
+    return immediateResponse(`❌ ${userMessage}`, true);
+  }
+
+  /**
+   * 遅延レスポンス中のエラーをREST API経由で送信
+   */
+  static async handleDeferredError(
+    applicationId: string,
+    interactionToken: string,
     error: Error
   ): Promise<void> {
-    logger.error('Interaction error', {
+    logger.error('Deferred interaction error', {
       error: error.message,
       stack: error.stack,
-      interactionId: interaction.id,
-      userId: interaction.user.id,
     });
 
     const userMessage = this.getUserFriendlyMessage(error);
 
     try {
-      if (interaction.isRepliable()) {
-        const method = interaction.replied || interaction.deferred ? 'followUp' : 'reply';
-
-        await (interaction as any)[method]({
-          content: `❌ ${userMessage}`,
-          ephemeral: true,
-        });
-      }
+      await editOriginalInteractionResponse(applicationId, interactionToken, {
+        content: `❌ ${userMessage}`,
+      });
     } catch (replyError) {
       logger.error('Failed to send error message', { replyError });
     }

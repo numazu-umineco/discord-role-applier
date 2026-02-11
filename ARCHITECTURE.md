@@ -13,9 +13,12 @@
 ```
 discord-role-applier/
 ├── src/
-│   ├── index.ts                       # エントリーポイント（Client初期化含む）
+│   ├── index.ts                       # エントリーポイント（Hono HTTPサーバー）
 │   ├── config/
 │   │   └── env.ts                     # 環境変数管理
+│   ├── lib/
+│   │   ├── discordClient.ts           # Discord REST APIクライアント
+│   │   └── interactionResponse.ts     # HTTPレスポンスヘルパー
 │   ├── interactions/
 │   │   ├── applyRoleCommand.ts        # Message Commandハンドラ
 │   │   ├── roleSelectMenu.ts          # ロール選択メニュー生成
@@ -39,9 +42,19 @@ discord-role-applier/
 ## 主要コンポーネント
 
 ### index.ts
-- Discord Clientの初期化
-- イベントリスナーの登録
-- エラーハンドリングの設定
+- Hono HTTPサーバーの起動
+- Discord Interactions Endpoint（`POST /interactions`）
+- Ed25519署名検証
+- インタラクションルーティング
+- ヘルスチェックエンドポイント（`GET /health`）
+
+### lib/discordClient.ts
+- discord.js RESTクラスによるDiscord API通信
+- メッセージ取得・メンバー取得・ロール付与などのヘルパー関数
+
+### lib/interactionResponse.ts
+- HTTP Interactions Endpoint用のレスポンスヘルパー
+- Deferred Response / Update Message / Immediate Response
 
 ### applyRoleCommand.ts
 - Message Context Menu Commandの処理
@@ -74,26 +87,35 @@ discord-role-applier/
 ```
 User: メッセージ右クリック→コマンド選択
   ↓
-[index.ts] InteractionCreate
+Discord → HTTP POST /interactions
+  ↓
+[index.ts] 署名検証 → ルーティング
   ↓
 [applyRoleCommand.ts]
-  ├─ 権限チェック
-  ├─ メッセージ履歴取得
-  └─ ロール選択UI表示
+  ├─ Deferred Response返却（即座）
+  ├─ 権限チェック（REST API）
+  ├─ メッセージ履歴取得（REST API）
+  └─ ロール選択UI表示（REST API: editOriginalResponse）
   ↓
 User: ロール選択
   ↓
+Discord → HTTP POST /interactions
+  ↓
 [interactionHandler.handleRoleSelection]
-  ├─ 対象者プレビュー取得
+  ├─ Deferred Update返却（即座）
+  ├─ 対象者プレビュー取得（REST API）
   ├─ 権限再チェック
-  └─ 確認画面表示
+  └─ 確認画面表示（REST API: editOriginalResponse）
   ↓
 User: 「実行」ボタンクリック
   ↓
+Discord → HTTP POST /interactions
+  ↓
 [interactionHandler.handleRoleConfirm]
-  ├─ メッセージ再取得
-  ├─ ロール一括付与
-  └─ 結果表示
+  ├─ Deferred Update返却（即座）
+  ├─ メッセージ再取得（REST API）
+  ├─ ロール一括付与（REST API）
+  └─ 結果表示（REST API: editOriginalResponse）
 ```
 
 ## ステートレス設計
@@ -126,7 +148,9 @@ User: 「実行」ボタンクリック
 
 ### docker-compose
 - 環境変数を`.env`から読み込み
+- ポート公開（デフォルト: 8080）
 - 自動再起動（`restart: unless-stopped`）
+- ヘルスチェック（`GET /health`）
 - ログは標準出力（`docker logs`で確認可能）
 
 ## 技術スタック
@@ -135,7 +159,9 @@ User: 「実行」ボタンクリック
 |---------|------|------|
 | 言語 | TypeScript 5.x | 型安全性 |
 | ランタイム | Node.js 24 | 実行環境 |
-| Discord SDK | discord.js v14 | Discord API通信 |
+| HTTPフレームワーク | Hono + @hono/node-server | Interactions Endpoint |
+| Discord SDK | discord.js v14（REST API） | Discord API通信 |
+| 署名検証 | discord-interactions | Ed25519署名検証 |
 | ロギング | console | stdout/stderr出力 |
 | コンテナ | Docker | ポータブル実行 |
 

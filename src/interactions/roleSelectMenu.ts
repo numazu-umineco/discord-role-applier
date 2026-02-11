@@ -1,19 +1,19 @@
 import {
   ActionRowBuilder,
-  Role,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
+import type { APIRole } from 'discord.js';
 import { logger } from '../utils/logger';
 
 export class RoleSelectMenu {
   /**
-   * ロール選択メニューを生成
+   * ロール選択メニューを生成（JSON形式で返す）
    */
   static createRoleSelectMenu(
     channelId: string,
-    roles: Role[]
-  ): ActionRowBuilder<StringSelectMenuBuilder> {
+    roles: APIRole[]
+  ): ReturnType<ActionRowBuilder<StringSelectMenuBuilder>['toJSON']> {
     // Discordの制限で最大25個まで
     const displayRoles = roles.slice(0, 25);
 
@@ -37,7 +37,7 @@ export class RoleSelectMenu {
 
     const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
-    return row;
+    return row.toJSON();
   }
 
   /**
