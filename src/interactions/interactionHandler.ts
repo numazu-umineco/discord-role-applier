@@ -15,6 +15,7 @@ import { MessageHistoryService } from '../services/messageHistoryService';
 import { RoleService } from '../services/roleService';
 import { PermissionService } from '../services/permissionService';
 import { RoleSelectMenu } from './roleSelectMenu';
+import { EmbedColors } from '../utils/embedColors';
 
 export class InteractionHandler {
   /**
@@ -25,7 +26,7 @@ export class InteractionHandler {
       const member = interaction.member as GuildMember;
       if (!member || !interaction.guild) {
         await interaction.reply({
-          content: '❌ このコマンドはサーバー内でのみ使用できます。',
+          embeds: [new EmbedBuilder().setDescription('このコマンドはサーバー内でのみ使用できます').setColor(EmbedColors.Error)],
           ephemeral: true,
         });
         return;
@@ -45,16 +46,16 @@ export class InteractionHandler {
         throw new BotError(
           ErrorType.INVALID_CHANNEL,
           `Channel ${channelId} not found`,
-          'チャンネルが見つかりません。'
+          'チャンネルが見つかりません'
         );
       }
       let channelName: string;
       if (channel.isThread()) {
-        channelName = `スレッド: ${channel.name}`;
+        channelName = `【スレッド】 ${channel.name}`;
       } else if ('name' in channel) {
-        channelName = `チャンネル: ${channel.name}`;
+        channelName = `【チャンネル】 ${channel.name}`;
       } else {
-        channelName = `チャンネル: ${channelId}`;
+        channelName = `【チャンネル】 ${channelId}`;
       }
 
       // 選択されたロールを取得
@@ -63,7 +64,7 @@ export class InteractionHandler {
         throw new BotError(
           ErrorType.INVALID_ROLE,
           `Role ${selectedRoleId} not found`,
-          'ロールが見つかりません。'
+          'ロールが見つかりません'
         );
       }
 
@@ -75,14 +76,14 @@ export class InteractionHandler {
       // 対象者が0人の場合
       if (targetMembers.length === 0) {
         await interaction.update({
-          content: '❌ 対象者がいません。このチャンネル/スレッドの発言者は全員サーバーから退出しています。',
+          embeds: [new EmbedBuilder().setDescription('対象者がいません このチャンネル/スレッドの発言者は全員サーバーから退出しています').setColor(EmbedColors.Error)],
           components: [],
         });
         return;
       }
 
       // メンションリストを作成（最大30人、文字数制限も考慮）
-      const maxDisplayUsers = 30;
+      const maxDisplayUsers = 10;
       let displayMembers = targetMembers.slice(0, maxDisplayUsers);
       let remainingCount = targetMembers.length - displayMembers.length;
 
@@ -109,7 +110,7 @@ export class InteractionHandler {
       // 権限チェック: ユーザーがこのロールを管理できるか
       if (!PermissionService.canManageRole(member, role)) {
         await interaction.update({
-          content: '❌ このロールを管理する権限がありません。',
+          embeds: [new EmbedBuilder().setDescription('このロールを管理する権限がありません').setColor(EmbedColors.Error)],
           components: [],
         });
         return;
@@ -119,8 +120,7 @@ export class InteractionHandler {
       const botMember = await interaction.guild.members.fetchMe();
       if (!PermissionService.canBotManageRole(botMember, role)) {
         await interaction.update({
-          content:
-            '❌ Botがこのロールを付与する権限を持っていません。Botのロールをより上位に配置してください。',
+          embeds: [new EmbedBuilder().setDescription('Botがこのロールを付与する権限を持っていません\nBotのロールをより上位に配置してください').setColor(EmbedColors.Error)],
           components: [],
         });
         return;
@@ -145,25 +145,23 @@ export class InteractionHandler {
       );
 
       // 確認メッセージに更新
-      let confirmMessage = `
-**確認**
-
-${channelName}
-ロール: **${role.name}**
-対象者: **${targetMembers.length}人**
-
-${userList}
-
-上記の発言者全員にロールを付与しますか？
-      `.trim();
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle('確認')
+        .setDescription(`以下の発言者全員にロールを付与しますか？`)
+        .setFields(
+          { name: '対象', value: channelName },
+          { name: 'ロール', value: role.name },
+          { name: '対象者', value: `${userList} (合計${targetMembers.length}人)` },
+        )
+        .setColor(EmbedColors.Info);
 
       // チャンネルの場合は注意喚起
       if (!channel.isThread()) {
-        confirmMessage += '\n\n⚠️ **チャンネル全体が対象です。影響範囲が大きくなる可能性があります。**';
+        confirmEmbed.addFields({ name: '⚠️ 注意', value: 'チャンネル全体が対象です 影響範囲が大きくなる可能性があります！' });
       }
 
       await interaction.update({
-        content: confirmMessage,
+        embeds: [confirmEmbed],
         components: [row],
       });
     } catch (error) {
@@ -180,7 +178,7 @@ ${userList}
       const member = interaction.member as GuildMember;
       if (!member || !interaction.guild) {
         await interaction.reply({
-          content: '❌ このコマンドはサーバー内でのみ使用できます。',
+          embeds: [new EmbedBuilder().setDescription('このコマンドはサーバー内でのみ使用できます').setColor(EmbedColors.Error)],
           ephemeral: true,
         });
         return;
@@ -195,7 +193,7 @@ ${userList}
 
       // ローディング状態を表示
       await interaction.update({
-        content: '⏳ ロールを付与中...',
+        embeds: [new EmbedBuilder().setDescription('⏳ ロールを付与中...').setColor(EmbedColors.Info)],
         components: [],
       });
 
@@ -205,16 +203,16 @@ ${userList}
         throw new BotError(
           ErrorType.INVALID_CHANNEL,
           `Channel ${channelId} not found`,
-          'チャンネルが見つかりません。'
+          'チャンネルが見つかりませんでした'
         );
       }
       let channelName: string;
       if (channel.isThread()) {
-        channelName = `スレッド: ${channel.name}`;
+        channelName = `【スレッド】 ${channel.name}`;
       } else if ('name' in channel) {
-        channelName = `チャンネル: ${channel.name}`;
+        channelName = `【チャンネル】 ${channel.name}`;
       } else {
-        channelName = `チャンネル: ${channelId}`;
+        channelName = `【チャンネル】 ${channelId}`;
       }
 
       // ロールを取得
@@ -223,7 +221,7 @@ ${userList}
         throw new BotError(
           ErrorType.INVALID_ROLE,
           `Role ${roleId} not found`,
-          'ロールが見つかりません。'
+          'ロールが見つかりませんでした'
         );
       }
 
@@ -233,7 +231,7 @@ ${userList}
 
       if (userIds.size === 0) {
         await interaction.editReply({
-          content: '❌ このチャンネルには発言者がいません。',
+          embeds: [new EmbedBuilder().setDescription('このチャンネルには発言者がいません').setColor(EmbedColors.Error)],
         });
         return;
       }
@@ -242,7 +240,7 @@ ${userList}
 
       if (members.length === 0) {
         await interaction.editReply({
-          content: '❌ このチャンネルの発言者は全員サーバーから退出しています。',
+          embeds: [new EmbedBuilder().setDescription('このチャンネルの発言者は全員サーバーから退出しています').setColor(EmbedColors.Error)],
         });
         return;
       }
@@ -251,22 +249,22 @@ ${userList}
       const result = await RoleService.applyRoleToMembers(members, roleId);
 
       // 結果をフィードバック
-      let resultMessage = `
-✅ ロール付与完了！
-
-**${channelName}**
-**付与したロール:** ${role.name}
-
-✅ 成功: ${result.success}人
-⏭️ スキップ: ${result.skipped}人（既に保持）
-      `.trim();
-
+      let resultText = `✅ 成功: ${result.success}人\n⏭️ スキップ: ${result.skipped}人（既に保持）`;
       if (result.failed > 0) {
-        resultMessage += `\n❌ 失敗: ${result.failed}人`;
+        resultText += `\n❌ 失敗: ${result.failed}人`;
       }
 
+      const resultEmbed = new EmbedBuilder()
+        .setTitle('ロール付与完了')
+        .setFields(
+          { name: '対象', value: channelName },
+          { name: '付与したロール', value: role.name },
+          { name: '結果', value: resultText },
+        )
+        .setColor(result.failed > 0 ? EmbedColors.Error : EmbedColors.Success);
+
       await interaction.editReply({
-        content: resultMessage,
+        embeds: [resultEmbed],
       });
 
       // 監査ログチャンネルへの投稿
@@ -282,13 +280,13 @@ ${userList}
             const embed = new EmbedBuilder()
               .setTitle('ロール付与ログ')
               .setFields(
-                { name: '実行者', value: `<@${member.user.id}>`, inline: true },
-                { name: '対象', value: channelName, inline: true },
-                { name: 'ロール', value: role.name, inline: true },
+                { name: '実行者', value: `<@${member.user.id}>` },
+                { name: '対象', value: channelName },
+                { name: 'ロール', value: role.name },
                 { name: '結果', value: resultText },
               )
               .setTimestamp()
-              .setColor(result.failed > 0 ? 0xED4245 : 0x57F287);
+              .setColor(result.failed > 0 ? EmbedColors.Error : EmbedColors.Success);
 
             await (auditChannel as TextChannel).send({ embeds: [embed] });
             logger.info(`Audit log sent to channel ${env.auditLogChannelId}`);
@@ -313,7 +311,7 @@ ${userList}
       logger.info(`Role cancel by ${interaction.user.tag}`);
 
       await interaction.update({
-        content: '❌ キャンセルしました。',
+        embeds: [new EmbedBuilder().setDescription('キャンセルしました').setColor(EmbedColors.Error)],
         components: [],
       });
     } catch (error) {

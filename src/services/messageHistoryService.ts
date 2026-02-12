@@ -16,7 +16,7 @@ export class MessageHistoryService {
       throw new BotError(
         ErrorType.INVALID_CHANNEL,
         `Channel ${channel.id} is not text-based`,
-        'このチャンネルではメッセージを取得できません。'
+        'このチャンネルではメッセージを取得できません'
       );
     }
 
@@ -62,14 +62,14 @@ export class MessageHistoryService {
         throw new BotError(
           ErrorType.DISCORD_API_ERROR,
           `Missing access to channel ${channel.id}`,
-          'このチャンネルにアクセスできません。Botの権限を確認してください。'
+          'このチャンネルにアクセスできません\nBotの権限を確認してください'
         );
       }
 
       throw new BotError(
         ErrorType.DISCORD_API_ERROR,
         `Failed to fetch messages from channel ${channel.id}: ${error.message}`,
-        'メッセージの取得中にエラーが発生しました。',
+        'メッセージの取得中にエラーが発生しました',
         error
       );
     }
