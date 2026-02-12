@@ -57,21 +57,21 @@ export class ErrorHandler {
     }
 
     if (error.message.includes('Missing Permissions')) {
-      return 'ボットに必要な権限がありません。サーバー管理者に確認してください。';
+      return 'ボットに必要な権限がありません サーバー管理者に確認してください';
     }
 
     if (error.message.includes('Unknown Channel')) {
-      return 'チャンネルが見つかりません。';
+      return 'チャンネルが見つかりません';
     }
 
     if (error.message.includes('Unknown Role')) {
-      return 'ロールが見つかりません。';
+      return 'ロールが見つかりません';
     }
 
     if (error.message.includes('Missing Access')) {
-      return 'このチャンネルにアクセスできません。';
+      return 'このチャンネルにアクセスできません';
     }
 
-    return 'エラーが発生しました。しばらく経ってから再度お試しください。';
+    return 'エラーが発生しました しばらく経ってから再度お試しください';
   }
 }

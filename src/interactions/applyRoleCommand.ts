@@ -1,6 +1,7 @@
-import { GuildMember, MessageContextMenuCommandInteraction } from 'discord.js';
+import { Channel, EmbedBuilder, GuildMember, MessageContextMenuCommandInteraction, TextChannel } from 'discord.js';
 import { logger } from '../utils/logger';
 import { ErrorHandler, BotError, ErrorType } from '../utils/errorHandler';
+import { EmbedColors } from '../utils/embedColors';
 import { PermissionService } from '../services/permissionService';
 import { MessageHistoryService } from '../services/messageHistoryService';
 import { RoleService } from '../services/roleService';
@@ -16,7 +17,7 @@ export async function handleApplyRoleCommand(
     const member = interaction.member as GuildMember;
     if (!member || !interaction.guild) {
       await interaction.reply({
-        content: '❌ このコマンドはサーバー内でのみ使用できます。',
+        embeds: [new EmbedBuilder().setDescription('このコマンドはサーバー内でのみ使用できます').setColor(EmbedColors.Error)],
         ephemeral: true,
       });
       return;
@@ -25,28 +26,43 @@ export async function handleApplyRoleCommand(
     // 必須ロールを持っているかチェック
     if (!PermissionService.hasRequiredRole(member)) {
       await interaction.reply({
-        content: '❌ このコマンドを実行する権限がありません。',
+        embeds: [new EmbedBuilder().setDescription('このコマンドを実行する権限がありません').setColor(EmbedColors.Error)],
         ephemeral: true,
       });
       return;
     }
 
     const targetMessage = interaction.targetMessage;
-    const channel = targetMessage.channel;
+    let channel: Channel = targetMessage.channel;
+
+    // 対象メッセージにスレッドがある場合はスレッドを対象にする
+    if (targetMessage.hasThread) {
+      let thread = targetMessage.thread;
+      if (!thread && 'threads' in channel) {
+        try {
+          thread = await (channel as TextChannel).threads.fetch(targetMessage.id) ?? null;
+        } catch (error) {
+          logger.warn(`Failed to fetch thread for message ${targetMessage.id}`, error);
+        }
+      }
+      if (thread) {
+        channel = thread;
+      }
+    }
 
     // チャンネル名を取得（スレッドの場合はスレッド名）
     let channelName: string;
     if (channel.isThread()) {
-      channelName = `スレッド: ${channel.name}`;
+      channelName = `【スレッド】 ${channel.name}`;
     } else if ('name' in channel) {
-      channelName = `チャンネル: ${channel.name}`;
+      channelName = `【チャンネル】 ${channel.name}`;
     } else {
-      channelName = `チャンネル: ${channel.id}`;
+      channelName = `【チャンネル】 ${channel.id}`;
     }
 
     // Phase 4: メッセージ履歴取得とユーザー抽出
     await interaction.reply({
-      content: '⏳ メッセージ履歴を取得中...',
+      embeds: [new EmbedBuilder().setDescription('⏳ メッセージ履歴を取得中...').setColor(EmbedColors.Info)],
       ephemeral: true,
     });
 
@@ -55,7 +71,7 @@ export async function handleApplyRoleCommand(
 
     if (userIds.size === 0) {
       await interaction.editReply({
-        content: '❌ このチャンネルには発言者がいません。',
+        embeds: [new EmbedBuilder().setDescription('このチャンネルには発言者がいません').setColor(EmbedColors.Error)],
       });
       return;
     }
@@ -64,7 +80,7 @@ export async function handleApplyRoleCommand(
 
     if (members.length === 0) {
       await interaction.editReply({
-        content: '❌ このチャンネルの発言者は全員サーバーから退出しています。',
+        embeds: [new EmbedBuilder().setDescription('このチャンネルの発言者は全員サーバーから退出しています').setColor(EmbedColors.Error)],
       });
       return;
     }
@@ -75,31 +91,30 @@ export async function handleApplyRoleCommand(
 
     if (roles.length === 0) {
       await interaction.editReply({
-        content: '❌ 付与可能なロールがありません。',
+        embeds: [new EmbedBuilder().setDescription('付与可能なロールがありません').setColor(EmbedColors.Error)],
       });
       return;
     }
 
     const selectMenuRow = RoleSelectMenu.createRoleSelectMenu(channel.id, roles);
 
-    let resultMessage = `
-✅ メッセージ履歴の取得完了！
-
-${channelName}
-取得メッセージ数: ${messages.length}件
-ユニーク発言者: ${userIds.size}人
-現在サーバーにいる発言者: ${members.length}人
-    `.trim();
+    const resultEmbed = new EmbedBuilder()
+      .setTitle('付与するロールを選択')
+      .setDescription('下のメニューから付与するロールを選択してください')
+      .setFields(
+        { name: '対象', value: channelName },
+        { name: '取得メッセージ数', value: `${messages.length}件` },
+        { name: 'ユニーク発言者', value: `${userIds.size}人` },
+      )
+      .setColor(EmbedColors.Success);
 
     // チャンネルの場合は注意喚起
     if (!channel.isThread()) {
-      resultMessage += '\n\n⚠️ **チャンネル全体が対象です**';
+      resultEmbed.addFields({ name: '⚠️ 注意', value: 'チャンネル全体が対象です' });
     }
 
-    resultMessage += '\n\n下のメニューから付与するロールを選択してください👇';
-
     await interaction.editReply({
-      content: resultMessage,
+      embeds: [resultEmbed],
       components: [selectMenuRow],
     });
   } catch (error) {
